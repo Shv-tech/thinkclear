@@ -1,0 +1,57 @@
+// Prisma schema for THINKCLEAR v3
+// PostgreSQL for production-ready, scalable architecture
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  subscriptionStatus String    @default("free") // free | active | expired | cancelled
+  razorpaySubId      String?   // Razorpay subscription ID
+  razorpayCustomerId String?   // Razorpay customer ID
+  usageCount         Int       @default(0)
+  lastUsedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  magicLinks MagicLink[]
+  sessions   Session[]
+
+  @@index([email])
+  @@index([razorpaySubId])
+}
+
+model MagicLink {
+  id        String    @id @default(cuid())
+  email     String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+
+  @@index([token])
+  @@index([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  @@index([token])
+  @@index([userId])
+}
