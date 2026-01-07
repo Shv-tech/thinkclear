@@ -52,10 +52,7 @@ export async function createSubscription(
             return { success: false, error: 'User not found' };
         }
 
-        // For weekly pass, create a one-time order instead of subscription
-        if (planType === 'weekly') {
-            return createOneTimeOrder(userId, PRICING.SEVEN_DAY_PASS);
-        }
+        
 
         // Create or get Razorpay customer
         let customerId = user.razorpayCustomerId;
@@ -93,32 +90,6 @@ export async function createSubscription(
     }
 }
 
-/**
- * Create a one-time order (for 7-day pass)
- */
-async function createOneTimeOrder(
-    userId: string,
-    amount: number
-): Promise<SubscriptionOrderResult> {
-    try {
-        const order = await getRazorpay().orders.create({
-            amount,
-            currency: PRICING.CURRENCY,
-            notes: {
-                userId,
-                type: 'weekly_pass',
-            },
-        });
-
-        return {
-            success: true,
-            orderId: order.id,
-        };
-    } catch (error) {
-        console.error('Failed to create order:', error);
-        return { success: false, error: 'Failed to create order' };
-    }
-}
 
 /**
  * Verify Razorpay webhook signature
