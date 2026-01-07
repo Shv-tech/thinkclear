@@ -3,6 +3,8 @@ import { createSubscription, getRazorpayKeyId } from '@/lib/payments';
 import { getSession } from '@/lib/auth';
 import { SESSION } from '@/lib/constants';
 
+export const dynamic = 'force-dynamic';
+
 // POST /api/payments/create-subscription
 // Create a Razorpay subscription or order
 

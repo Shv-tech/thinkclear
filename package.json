@@ -13,6 +13,7 @@
     "framer-motion": "^12.24.3",
     "i": "^0.3.7",
     "next": "16.1.1",
+    "packages": "^0.0.8",
     "razorpay": "^2.9.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

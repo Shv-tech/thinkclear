@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { SESSION, USAGE } from '@/lib/constants';
-
+export const dynamic = 'force-dynamic';
 // GET /api/usage
 // Get usage statistics for current user
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkSubscriptionStatus } from '@/lib/payments';
 import { getSession } from '@/lib/auth';
 import { SESSION } from '@/lib/constants';
-
+export const dynamic = 'force-dynamic';
 // GET /api/payments/status
 // Get current subscription status
 

@@ -1,8 +1,8 @@
 // lib/auth/index.ts
 import { randomBytes, createHash } from 'crypto';
-import { prisma } from '../../../lib/db';
+import { prisma } from '../../../lib/prisma';
 import { SESSION } from '../../../lib/constants';
-
+export const dynamic = 'force-dynamic';
 export interface MagicLinkResult {
     success: boolean;
     token?: string;

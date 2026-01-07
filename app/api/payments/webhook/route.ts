@@ -6,6 +6,7 @@ import {
     handlePaymentCaptured,
 } from '@/lib/payments';
 
+export const dynamic = 'force-dynamic';
 // POST /api/payments/webhook
 // Razorpay webhook handler - must be public
 
