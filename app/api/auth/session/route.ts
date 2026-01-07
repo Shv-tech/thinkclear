@@ -1,28 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSession, deleteSession, getUserById } from "../../../../lib/auth/index";
+import { cookies } from 'next/headers';
+import { prisma } from '@/lib/db';
+import { hashToken } from '@/lib/auth/session';
+import { NextResponse } from 'next/server';
 
-// define SESSION exactly how your code expects it
-const SESSION = {
-  COOKIE_NAME: "thinkclear_session",
-};
-// app/api/auth/session/route.ts
-export async function GET(request: NextRequest) {
-    const token = request.cookies.get(SESSION.COOKIE_NAME)?.value;
-    if (!token) return NextResponse.json({ authenticated: false, user: null });
+export async function GET() {
+  const cookieStore = await cookies(); // ✅ FIX
+  const token = cookieStore.get('session')?.value;
 
-    const result = await getSession(token);
-    if (!result.success || !result.session) return NextResponse.json({ authenticated: false, user: null });
+  if (!token) {
+    return NextResponse.json({ user: null });
+  }
 
-    const user = await getUserById(result.session.userId);
-    return NextResponse.json({ authenticated: true, user });
-}
+  const session = await prisma.session.findFirst({
+    where: {
+      token: hashToken(token),
+      expiresAt: { gt: new Date() },
+    },
+    include: { user: true },
+  });
 
-// app/api/auth/logout/route.ts
-export async function POST(request: NextRequest) {
-    const token = request.cookies.get(SESSION.COOKIE_NAME)?.value;
-    if (token) await deleteSession(token);
+  if (!session) {
+    return NextResponse.json({ user: null });
+  }
 
-    const response = NextResponse.json({ success: true });
-    response.cookies.set({ name: SESSION.COOKIE_NAME, value: '', expires: new Date(0), path: '/' });
-    return response;
+  return NextResponse.json({
+    user: {
+      id: session.user.id,
+      email: session.user.email,
+      subscriptionStatus: session.user.subscriptionStatus,
+      usageCount: session.user.usageCount,
+    },
+  });
 }

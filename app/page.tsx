@@ -193,38 +193,7 @@ export default function HomePage() {
 
       {/* ================= SIGN IN MODAL ================= */}
       {showSignIn && (
-        <SignInModal onClose={() => setShowSignIn(false)}>
-          <h2 className="text-xl font-semibold text-white mb-2">
-            Sign in to ThinkClear
-          </h2>
-
-          <p className="text-white/70 mb-4">
-            No spam. No feeds. Just clarity.
-          </p>
-
-          {sent ? (
-            <p className="text-green-400">
-              Check your email for the magic link ✨
-            </p>
-          ) : (
-            <>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-md bg-black/40 border border-white/10 px-3 py-2 text-white mb-3"
-               />
-              <button
-                   className="btn btn-primary"
-                   onClick={() => setShowSignIn(true)}
-                   >
-                   Continue with email
-                 </button>
-               {loading ? 'Sending…' : 'Continue with email'}
-            </>
-          )}
-        </SignInModal>
+  <SignInModal onClose={() => setShowSignIn(false)} />
       )}
     </>
   );
