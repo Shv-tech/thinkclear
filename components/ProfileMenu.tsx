@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ANIMATION } from '@/lib/constants';
 
 interface UsageStats {
     usageCount: number;

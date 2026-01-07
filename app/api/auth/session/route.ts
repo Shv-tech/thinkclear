@@ -1,10 +1,11 @@
 import { cookies } from 'next/headers';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { hashToken } from '@/lib/auth/session';
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const cookieStore = await cookies(); // ✅ FIX
+  const cookieStore = await cookies();
   const token = cookieStore.get('session')?.value;
 
   if (!token) {
@@ -19,16 +20,7 @@ export async function GET() {
     include: { user: true },
   });
 
-  if (!session) {
-    return NextResponse.json({ user: null });
-  }
-
   return NextResponse.json({
-    user: {
-      id: session.user.id,
-      email: session.user.email,
-      subscriptionStatus: session.user.subscriptionStatus,
-      usageCount: session.user.usageCount,
-    },
+    user: session?.user ?? null,
   });
 }

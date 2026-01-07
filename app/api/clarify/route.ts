@@ -2,8 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processCognition } from '@/lib/cognitive';
 import { getSession } from '@/lib/auth';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { USAGE, SESSION } from '@/lib/constants';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {

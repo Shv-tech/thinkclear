@@ -3,7 +3,7 @@
 // No passwords, no tracking
 
 import { randomBytes, createHash } from 'crypto';
-import { prisma } from '../db';
+import { prisma } from '@/lib/prisma';
 import { SESSION } from '../constants';
 
 export interface MagicLinkResult {

@@ -30,7 +30,7 @@ export default function Header({
   return (
     <header className={`header ${scrolled ? 'header-scrolled' : ''}`}>
       <div className="header-inner">
-        <div className="logo">THINKCLEAR</div>
+        <div className="logo">ThinkClear</div>
 
         <nav className="nav">
           <a href="#think" className={active === 'think' ? 'active' : ''}>Think</a>

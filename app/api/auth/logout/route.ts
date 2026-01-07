@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { deleteSession } from '@/lib/auth';
 import { SESSION } from '@/lib/constants';
+export const dynamic = 'force-dynamic';
 
 // POST /api/auth/logout
 // Clear session

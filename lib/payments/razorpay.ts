@@ -4,8 +4,8 @@
 
 import Razorpay from 'razorpay';
 import { createHmac } from 'crypto';
-import { prisma } from '../db';
-import { PRICING } from '../constants';
+import { prisma } from '@/lib/prisma';
+
 
 // Lazy Razorpay instance initialization
 let razorpayInstance: Razorpay | null = null;

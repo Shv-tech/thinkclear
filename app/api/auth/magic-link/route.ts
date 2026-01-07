@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { Resend } from 'resend';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { hashToken } from '@/lib/auth';
-
+export const dynamic = 'force-dynamic';
 
 
 export async function POST(req: NextRequest) {
