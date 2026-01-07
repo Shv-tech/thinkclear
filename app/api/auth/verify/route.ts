@@ -1,43 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyMagicLink } from '@/lib/auth';
-import { SESSION } from '@/lib/constants';
+import crypto from 'crypto';
+import { prisma } from '@/lib/db';
+import { hashToken } from '@/lib/auth';
 
-// GET /api/auth/verify?token=xxx
-// Verify magic link and create session
+export async function GET(req: NextRequest) {
+  const token = req.nextUrl.searchParams.get('token');
+  if (!token) return NextResponse.redirect('/');
 
-export async function GET(request: NextRequest) {
-    try {
-        const token = request.nextUrl.searchParams.get('token');
+  const hashedToken = hashToken(token);
 
-        if (!token) {
-            return NextResponse.redirect(new URL('/?error=invalid_link', request.url));
-        }
+  const magicLink = await prisma.magicLink.findFirst({
+    where: {
+      token: hashedToken,
+      expiresAt: { gt: new Date() },
+      usedAt: null,
+    },
+  });
 
-        const result = await verifyMagicLink(token);
+  if (!magicLink || !magicLink.userId) {
+    return NextResponse.redirect('/?error=invalid-link');
+  }
 
-        if (!result.success || !result.session) {
-            return NextResponse.redirect(
-                new URL(`/?error=${encodeURIComponent(result.error || 'verification_failed')}`, request.url)
-            );
-        }
+  // Create session
+  const sessionToken = crypto.randomUUID();
 
-        // Create response with redirect to home
-        const response = NextResponse.redirect(new URL('/', request.url));
+  await prisma.session.create({
+    data: {
+      token: sessionToken,
+      userId: magicLink.userId,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+    },
+  });
 
-        // Set session cookie
-        response.cookies.set({
-            name: SESSION.COOKIE_NAME,
-            value: result.session.id,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: SESSION.MAX_AGE_SECONDS,
-            path: '/',
-        });
+  // Mark magic link as used (DO NOT DELETE)
+  await prisma.magicLink.update({
+    where: { id: magicLink.id },
+    data: { usedAt: new Date() },
+  });
 
-        return response;
-    } catch (error) {
-        console.error('Verify API error:', error);
-        return NextResponse.redirect(new URL('/?error=server_error', request.url));
-    }
+  const res = NextResponse.redirect('/');
+  res.cookies.set('tc_session', sessionToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+  });
+
+  return res;
 }

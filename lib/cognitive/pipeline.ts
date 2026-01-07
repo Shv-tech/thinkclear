@@ -1,29 +1,24 @@
+// lib/cognitive/pipeline.ts
 import { calculateCLI, CLIResult } from './cli';
-import { processWithLLM, CognitivePrompt } from '../llm';
+import { processWithLLM } from '../llm';
 import { CognitiveInput, CognitiveOutput, PipelineContext } from './types';
 export * from './types';
 
 /**
- * Main cognitive processing pipeline
- * Server-side only - processes thought input into structured clarity
+ * Main cognitive processing pipeline - Updated to handle Pro status
  */
-export async function processCognition(input: CognitiveInput): Promise<CognitiveOutput> {
-    // Stage 1: Normalize input
+export async function processCognition(input: CognitiveInput, isPro: boolean = false): Promise<CognitiveOutput> {
     const normalizedText = normalize(input.text);
-
-    // Stage 2: Calculate Cognitive Load Index
     const cli = calculateCLI(normalizedText);
 
-    // Build context for remaining stages
     const context: PipelineContext = {
         originalText: input.text,
         normalizedText,
         cli,
     };
 
-    // Stage 3-5: LLM-powered processing
-    // distillCore -> mapControl -> synthesize
-    const result = await processWithLLM(context);
+    // Pass isPro to the LLM layer
+    const result = await processWithLLM(context, isPro);
 
     return {
         ...result,
@@ -31,31 +26,14 @@ export async function processCognition(input: CognitiveInput): Promise<Cognitive
     };
 }
 
-/**
- * Stage 1: Normalize input
- * Clean and prepare text for processing
- */
 function normalize(text: string): string {
-    return text
-        // Normalize whitespace
-        .replace(/\s+/g, ' ')
-        // Normalize line breaks
-        .replace(/\n{3,}/g, '\n\n')
-        // Trim
-        .trim();
+    return text.replace(/\s+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/**
- * Get output density based on CLI level
- * Higher load = simpler, shorter output
- */
 export function getOutputDensity(cli: CLIResult): 'detailed' | 'standard' | 'minimal' {
     switch (cli.level) {
-        case 'LOW':
-            return 'detailed';
-        case 'MEDIUM':
-            return 'standard';
-        case 'HIGH':
-            return 'minimal';
+        case 'LOW': return 'detailed';
+        case 'MEDIUM': return 'standard';
+        case 'HIGH': return 'minimal';
     }
 }

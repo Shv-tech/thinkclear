@@ -1,329 +1,231 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Header from '@/components/Header';
 import ThoughtCanvas from '@/components/ThoughtCanvas';
 import OutputSection from '@/components/OutputSection';
-import ClarifyButton from '@/components/ClarifyButton';
-import ThemeToggle from '@/components/ThemeToggle';
-import UserProfile from '@/components/UserProfile';
-import { CognitiveOutput, CLIResult, getCLIDurationMultiplier } from '@/lib/cognitive';
-import { API, PRODUCT, ANIMATION } from '@/lib/constants';
+import SignInModal from '@/components/SignInModal';
+import { CLIResult } from '@/lib/cognitive';
+
+type TrialState = {
+  remaining: number; // 3 = 1 real + 2 generic
+  realUsed: boolean;
+};
 
 export default function HomePage() {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [output, setOutput] = useState<CognitiveOutput | null>(null);
-  const [currentCli, setCurrentCli] = useState<CLIResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [inputText, setInputText] = useState('');
+  const [output, setOutput] = useState<any>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
-  const handleSubmit = useCallback(async (text: string, cli: CLIResult) => {
-    setIsProcessing(true);
-    setError(null);
-    setCurrentCli(cli);
-    setInputText(text);
+  const [trial, setTrial] = useState<TrialState>({
+    remaining: 3,
+    realUsed: false,
+  });
 
-    try {
-      const response = await fetch(API.CLARIFY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+  const abortRef = useRef<AbortController | null>(null);
+
+  /* ---------------- SAFE SESSION INIT ---------------- */
+  useEffect(() => {
+    let mounted = true;
+
+    fetch('/api/auth/session')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!mounted || !data) return;
+
+        const remaining =
+          typeof data.trialLeft === 'number'
+            ? data.trialLeft
+            : 3;
+
+        setTrial({
+          remaining: Math.max(0, Math.min(3, remaining)),
+          realUsed: remaining < 3,
+        });
+      })
+      .catch(() => {
+        // Fail CLOSED — never break thinking
+        setTrial({ remaining: 3, realUsed: false });
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to process thoughts');
-      }
-
-      const result: CognitiveOutput = await response.json();
-      setOutput(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setIsProcessing(false);
-    }
+    return () => {
+      mounted = false;
+      abortRef.current?.abort();
+    };
   }, []);
 
-  const handleReset = () => {
-    setOutput(null);
-    setError(null);
-    setCurrentCli(null);
-    setInputText('');
-  };
+  /* ---------------- SAFE SUBMIT HANDLER ---------------- */
+  const handleSubmit = useCallback(
+    async (text: string, cli: CLIResult) => {
+      if (!text.trim() || isProcessing) return;
 
-  const animationMultiplier = currentCli
-    ? getCLIDurationMultiplier(currentCli.level)
-    : 1;
+      if (trial.remaining <= 0) {
+        document.getElementById('pricing')?.scrollIntoView({
+          behavior: 'smooth',
+        });
+        return;
+      }
+
+      setIsProcessing(true);
+      abortRef.current = new AbortController();
+
+      try {
+        const endpoint =
+          !trial.realUsed
+            ? '/api/clarify'            // 1 REAL call
+            : '/api/clarify/generic';   // 2 SAFE calls
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, cli }),
+          signal: abortRef.current.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error('Request failed');
+        }
+
+        const result = await res.json();
+
+        setOutput(result);
+        setTrial(prev => ({
+          remaining: Math.max(0, prev.remaining - 1),
+          realUsed: true,
+        }));
+      } catch {
+        // HARD FAILSAFE OUTPUT
+        setOutput({
+          clarityScore: '—',
+          summary: 'Pause. Breathe. Clarify one thing at a time.',
+          bullets: [
+            'What is actually bothering you?',
+            'What is in your control today?',
+            'What can wait until tomorrow?',
+          ],
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [trial, isProcessing]
+  );
 
   return (
-    <main className="book-layout">
-      {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ANIMATION.ENTRY_FADE / 1000 }}
-        className="header"
-      >
-        <div className="header-brand">
-          <motion.h1
-            className="header-title"
-            whileHover={{ opacity: 0.8 }}
-          >
-            {PRODUCT.name}
-          </motion.h1>
-          <p className="header-tagline">
-            {PRODUCT.tagline}
-          </p>
-        </div>
-        <div className="header-actions">
-          <ThemeToggle />
-          <UserProfile />
-        </div>
-      </motion.header>
+    <>
+      <Header onSignIn={() => setShowSignIn(true)} />
 
-      {/* Hero section for empty state */}
-      <AnimatePresence mode="wait">
-        {!output && !isProcessing && !inputText && (
-          <motion.section
-            key="hero"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="hero-section"
-          >
-            <h2 className="hero-title">
-              Untangle your thoughts.<br />
-              <span className="text-accent">Find clarity.</span>
-            </h2>
-            <p className="hero-description text-muted">
-              Write what's on your mind. No judgment, no memory, no chat.<br />
-              Just structured thinking for when your mind feels full.
+      <main className="page">
+
+        {/* ================= THINK ================= */}
+        <section id="think" className="section think-zone">
+          <div className="container">
+            <h1>ThinkClear</h1>
+            <p>Structured cognition for night thinkers.</p>
+
+            <ThoughtCanvas
+              onSubmit={handleSubmit}
+              isProcessing={isProcessing}
+            />
+
+            {output && (
+              <div style={{ marginTop: '3rem' }}>
+                <OutputSection output={output} />
+              </div>
+            )}
+
+            <p className="text-subtle" style={{ marginTop: '2rem' }}>
+              {trial.remaining > 0
+                ? `${trial.remaining} free clarifications remaining today`
+                : 'Free usage complete for today'}
             </p>
-          </motion.section>
-        )}
-      </AnimatePresence>
+          </div>
+        </section>
 
-      {/* Main content */}
-      <div className="container main-content">
-        <AnimatePresence mode="wait">
-          {!output ? (
-            <motion.div
-              key="input"
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <ThoughtCanvas
-                onSubmit={handleSubmit}
-                isProcessing={isProcessing}
-              />
+        {/* ================= ABOUT ================= */}
+        <section id="about" className="section about">
+          <div className="container">
+            <h2>What is ThinkClear?</h2>
+            <p>
+              A quiet space to untangle thoughts without judgment.
+              No feeds. No noise. Just structure.
+            </p>
+          </div>
+        </section>
 
-              <ClarifyButton
-                onClick={() => {
-                  const event = new KeyboardEvent('keydown', {
-                    key: 'Enter',
-                    metaKey: true,
-                    bubbles: true,
-                  });
-                  document.getElementById('thought-input')?.dispatchEvent(event);
-                }}
-                isLoading={isProcessing}
-                disabled={false}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="output"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <OutputSection
-                output={output}
-                animationMultiplier={animationMultiplier}
-              />
+        {/* ================= PRICING ================= */}
+        <section id="pricing" className="section pricing">
+          <div className="container">
+            <h2>Continue with clarity</h2>
+            <p>You can use ThinkClear for free every day.</p>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.5 }}
-                className="reset-section"
+            <div className="pricing-card">
+              <div className="price">
+                ₹199<span>/month</span>
+              </div>
+
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowSignIn(true)}
               >
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="btn btn-secondary"
-                >
-                  Start fresh
-                </button>
-              </motion.div>
-            </motion.div>
+                Unlock unlimited thinking
+              </button>
+            </div>
+
+            <div className="pricing-card">
+              <div className="price">
+                ₹99<span>one-time pass</span>
+              </div>
+
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowSignIn(true)}
+              >
+                try thinking with clarity once
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* ================= SIGN IN MODAL ================= */}
+      {showSignIn && (
+        <SignInModal onClose={() => setShowSignIn(false)}>
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Sign in to ThinkClear
+          </h2>
+
+          <p className="text-white/70 mb-4">
+            No spam. No feeds. Just clarity.
+          </p>
+
+          {sent ? (
+            <p className="text-green-400">
+              Check your email for the magic link ✨
+            </p>
+          ) : (
+            <>
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-md bg-black/40 border border-white/10 px-3 py-2 text-white mb-3"
+               />
+              <button
+                   className="btn btn-primary"
+                   onClick={() => setShowSignIn(true)}
+                   >
+                   Continue with email
+                 </button>
+               {loading ? 'Sending…' : 'Continue with email'}
+            </>
           )}
-        </AnimatePresence>
-
-        {/* Error display */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="error-message"
-            >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Footer */}
-      <motion.footer
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8, duration: ANIMATION.ENTRY_FADE / 1000 }}
-        className="footer"
-      >
-        <p className="text-subtle">
-          No chat history. No emotional memory. Just structure.
-        </p>
-      </motion.footer>
-
-      <style jsx global>{`
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: var(--space-md);
-          margin-bottom: var(--space-2xl);
-          position: relative;
-          z-index: 10;
-        }
-
-        .header-brand {
-          flex: 1;
-        }
-
-        .header-title {
-          font-size: var(--text-xl);
-          font-weight: 700;
-          letter-spacing: -0.03em;
-          margin: 0;
-          background: linear-gradient(135deg, var(--color-text) 0%, var(--color-accent) 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .header-tagline {
-          font-size: var(--text-sm);
-          color: var(--color-text-subtle);
-          margin: 0;
-        }
-
-        .header-actions {
-          display: flex;
-          align-items: center;
-          gap: var(--space-sm);
-        }
-
-        .hero-section {
-          text-align: center;
-          max-width: 600px;
-          margin: 0 auto var(--space-3xl) auto;
-          padding: 0 var(--space-md);
-        }
-
-        .hero-title {
-          font-size: clamp(1.75rem, 5vw, 2.5rem);
-          font-weight: 600;
-          line-height: 1.2;
-          letter-spacing: -0.03em;
-          margin: 0 0 var(--space-lg) 0;
-        }
-
-        .hero-description {
-          font-size: var(--text-lg);
-          line-height: 1.6;
-          margin: 0;
-        }
-
-        .main-content {
-          position: relative;
-          z-index: 10;
-          flex: 1;
-        }
-
-        .reset-section {
-          text-align: center;
-          margin-top: var(--space-2xl);
-        }
-
-        .error-message {
-          margin-top: var(--space-xl);
-          padding: var(--space-md);
-          background: rgba(220, 38, 38, 0.1);
-          border: 1px solid rgba(220, 38, 38, 0.3);
-          border-radius: var(--border-radius);
-          color: #fca5a5;
-          text-align: center;
-        }
-
-        .footer {
-          margin-top: auto;
-          padding-top: var(--space-3xl);
-          text-align: center;
-          position: relative;
-          z-index: 10;
-        }
-
-        .footer p {
-          font-size: var(--text-xs);
-          margin: 0;
-        }
-
-        /* Responsive enhancements */
-        @media (max-width: 639px) {
-          .header {
-            flex-wrap: wrap;
-          }
-
-          .header-brand {
-            flex: 1 1 100%;
-            margin-bottom: var(--space-sm);
-          }
-
-          .header-actions {
-            width: 100%;
-            justify-content: flex-end;
-          }
-
-          .hero-section {
-            margin-bottom: var(--space-2xl);
-          }
-
-          .hero-title {
-            font-size: 1.5rem;
-          }
-
-          .hero-description {
-            font-size: var(--text-base);
-          }
-
-          .hero-description br {
-            display: none;
-          }
-        }
-
-        @media (min-width: 1024px) {
-          .hero-section {
-            margin-bottom: var(--space-3xl);
-            padding-top: var(--space-xl);
-          }
-
-          .hero-title {
-            font-size: 2.75rem;
-          }
-        }
-      `}</style>
-    </main>
+        </SignInModal>
+      )}
+    </>
   );
 }

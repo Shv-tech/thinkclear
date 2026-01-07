@@ -1,60 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createMagicLink } from '@/lib/auth';
+import crypto from 'crypto';
+import { Resend } from 'resend';
+import { prisma } from '@/lib/db';
+import { hashToken } from '@/lib/auth';
 
-// POST /api/auth/magic-link
-// Send magic link to email
 
-export async function POST(request: NextRequest) {
-    try {
-        const body = await request.json();
-        const { email } = body;
 
-        if (!email || typeof email !== 'string') {
-            return NextResponse.json(
-                { error: 'Email is required' },
-                { status: 400 }
-            );
-        }
+export async function POST(req: NextRequest) {
+  try {
+    const { email } = await req.json();
 
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return NextResponse.json(
-                { error: 'Invalid email format' },
-                { status: 400 }
-            );
-        }
-
-        const result = await createMagicLink(email.toLowerCase().trim());
-
-        if (!result.success) {
-            return NextResponse.json(
-                { error: result.error || 'Failed to create magic link' },
-                { status: 500 }
-            );
-        }
-
-        // In production, send email with the token
-        // For now, we'll construct the magic link URL
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const magicLinkUrl = `${baseUrl}/api/auth/verify?token=${result.token}`;
-
-        // TODO: Send email using configured provider
-        // For development, log the link
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Magic link URL:', magicLinkUrl);
-        }
-
-        // Don't expose token in response for security
-        return NextResponse.json({
-            success: true,
-            message: 'Magic link sent to your email',
-        });
-    } catch (error) {
-        console.error('Magic link API error:', error);
-        return NextResponse.json(
-            { error: 'Failed to send magic link' },
-            { status: 500 }
-        );
+    if (!email || !email.includes('@')) {
+      return NextResponse.json({ error: 'Invalid email' }, { status: 400 });
     }
+
+    const RESEND_KEY = process.env.RESEND_API_KEY;
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+
+    if (!RESEND_KEY || !APP_URL) {
+      console.error('Missing env vars');
+      return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+    }
+
+    const resend = new Resend(RESEND_KEY);
+
+    // Ensure user exists
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: { email },
+    });
+
+    // Create secure token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = hashToken(rawToken);
+
+    await prisma.magicLink.create({
+      data: {
+        email,
+        token: hashedToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 min
+      },
+    });
+
+    const loginUrl = `${APP_URL}/api/auth/verify?token=${rawToken}`;
+
+    // Send magic link
+    await resend.emails.send({
+      from: 'ThinkClear <onboarding@resend.dev>',
+      to: email,
+      subject: 'Your ThinkClear login link',
+      html: magicLinkEmail(loginUrl),
+    });
+
+    // Optional welcome email (SAFE: send every time or remove)
+    await resend.emails.send({
+      from: 'ThinkClear <onboarding@resend.dev>',
+      to: email,
+      subject: 'Welcome to ThinkClear',
+      html: welcomeEmail(),
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('Magic link error', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/* ---------------- EMAIL TEMPLATES ---------------- */
+
+function magicLinkEmail(url: string) {
+  return `
+  <div style="font-family:Inter,system-ui;background:#0e0e12;color:#fff;padding:40px">
+    <h2>Sign in to ThinkClear</h2>
+    <p>No passwords. No feeds. Just clarity.</p>
+    <a href="${url}"
+       style="display:inline-block;margin-top:24px;
+              padding:14px 22px;
+              background:#e6dcc8;
+              color:#111;
+              border-radius:12px;
+              text-decoration:none">
+      Continue to ThinkClear
+    </a>
+    <p style="margin-top:24px;opacity:.6">
+      This link expires in 15 minutes.
+    </p>
+  </div>
+  `;
+}
+
+function welcomeEmail() {
+  return `
+  <div style="font-family:Inter,system-ui;background:#0b0b10;color:#fff;padding:40px">
+    <h1>Welcome to ThinkClear</h1>
+    <p>
+      A quiet space to untangle thoughts.
+      No noise. No judgement.
+    </p>
+  </div>
+  `;
 }

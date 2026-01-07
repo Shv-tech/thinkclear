@@ -1,57 +1,54 @@
+// app/api/clarify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { processCognition } from '@/lib/cognitive';
-
-// POST /api/clarify
-// Main cognition endpoint - processes thought input
+import { getSession } from '@/lib/auth';
+import { prisma } from '@/lib/db';
+import { USAGE, SESSION } from '@/lib/constants';
 
 export async function POST(request: NextRequest) {
     try {
+        // Fix Error 4: Extract token from cookies first
+        const token = request.cookies.get(SESSION.COOKIE_NAME)?.value;
+        const sessionResult = await getSession(token || '');
+        
+        if (!sessionResult.success || !sessionResult.session) {
+            return NextResponse.json({ error: 'Please login to continue' }, { status: 401 });
+        }
+
+        // Fix Error 5: Access userId from the nested session object
+        const { session } = sessionResult;
+        const user = await prisma.user.findUnique({ where: { id: session.userId } });
+        
+        if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+        const isPro = user.subscriptionStatus === 'active';
+        
+        // Usage Gating
+        if (!isPro) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (user.lastUsedAt && user.lastUsedAt < today) {
+                await prisma.user.update({ where: { id: user.id }, data: { usageCount: 0 } });
+            }
+            if (user.usageCount >= USAGE.FREE_DAILY_LIMIT) {
+                return NextResponse.json({ error: 'Daily limit reached', code: 'LIMIT_REACHED' }, { status: 403 });
+            }
+        }
+
         const body = await request.json();
         const { text } = body;
 
-        if (!text || typeof text !== 'string') {
-            return NextResponse.json(
-                { error: 'Text is required' },
-                { status: 400 }
-            );
-        }
+        // Fix Error 6: Pass isPro to processCognition
+        const result = await processCognition({ text }, isPro);
 
-        if (text.length > 10000) {
-            return NextResponse.json(
-                { error: 'Text too long (max 10,000 characters)' },
-                { status: 400 }
-            );
-        }
-
-        // Process through cognitive pipeline
-        const result = await processCognition({ text });
-
-        // Return structured output
-        // Note: CLI is included but not labeled to user
-        return NextResponse.json({
-            coreIssues: result.coreIssues,
-            canControl: result.canControl,
-            letGo: result.letGo,
-            nextSteps: result.nextSteps,
-            // CLI included for client-side animation timing only
-            cli: {
-                level: result.cli.level,
-                // Don't expose score or metrics to client
-            },
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { usageCount: { increment: 1 }, lastUsedAt: new Date() }
         });
+
+        return NextResponse.json(result);
     } catch (error) {
         console.error('Clarify API error:', error);
-        return NextResponse.json(
-            { error: 'Failed to process thoughts' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Processing failed' }, { status: 500 });
     }
-}
-
-// Reject other methods
-export async function GET() {
-    return NextResponse.json(
-        { error: 'Method not allowed' },
-        { status: 405 }
-    );
 }

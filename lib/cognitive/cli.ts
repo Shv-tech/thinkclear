@@ -1,7 +1,4 @@
-// Cognitive Load Index (CLI) - THINKCLEAR v3
-// Measures structural complexity of thinking, NOT emotion
-// Implementation EXACTLY as specified
-
+// lib/cognitive/cli.ts
 import { CLI } from '../constants';
 
 export type CLILevel = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -9,6 +6,7 @@ export type CLILevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export interface CLIResult {
     score: number;
     level: CLILevel;
+    clarityScore: number; 
     metrics: {
         charCount: number;
         wordCount: number;
@@ -21,10 +19,6 @@ export interface CLIResult {
     };
 }
 
-/**
- * Calculate Cognitive Load Index from text
- * Uses ONLY structural signals - no sentiment or emotional keywords
- */
 export function calculateCLI(text: string): CLIResult {
     const chars = text.length;
     const words = text.split(/\s+/).filter(Boolean).length;
@@ -36,19 +30,23 @@ export function calculateCLI(text: string): CLIResult {
     const punctuationRatio = punctuation / Math.max(words, 1);
     const lineBreakRatio = lines / Math.max(sentences, 1);
 
-    let score = 0;
-    if (words > 150) score += 1;
-    if (words > 300) score += 1;
-    if (avgSentenceLength < 8) score += 1;
-    if (avgSentenceLength < 5) score += 1;
-    if (punctuationRatio > 0.12) score += 1;
-    if (lineBreakRatio > 1.5) score += 1;
+    let loadScore = 0;
+    if (words > 150) loadScore += 1;
+    if (words > 300) loadScore += 1;
+    if (avgSentenceLength < 8) loadScore += 1; // Short, choppy thinking
+    if (avgSentenceLength > 25) loadScore += 1; // Long, rambling thinking
+    if (punctuationRatio > 0.12) loadScore += 1;
+    if (lineBreakRatio > 1.5) loadScore += 1;
 
-    const level = classifyCLI(score);
+    // Logic: 100 is pure clarity. Higher load reduces score.
+    const baseClarity = 100 - (loadScore * 12);
+    const depthBonus = words > 50 ? 10 : 0; 
+    const clarityScore = Math.min(100, Math.max(0, baseClarity + depthBonus));
 
     return {
-        score,
-        level,
+        score: loadScore,
+        level: loadScore <= CLI.LOW_MAX ? 'LOW' : loadScore <= CLI.MEDIUM_MAX ? 'MEDIUM' : 'HIGH',
+        clarityScore,
         metrics: {
             charCount: chars,
             wordCount: words,
@@ -61,24 +59,10 @@ export function calculateCLI(text: string): CLIResult {
         },
     };
 }
-
-function classifyCLI(score: number): CLILevel {
-    if (score <= CLI.LOW_MAX) return 'LOW';
-    if (score <= CLI.MEDIUM_MAX) return 'MEDIUM';
-    return 'HIGH';
-}
-
-/**
- * Get animation duration multiplier based on CLI level
- * Higher cognitive load = slower, calmer animations
- */
 export function getCLIDurationMultiplier(level: CLILevel): number {
     switch (level) {
-        case 'LOW':
-            return 1;
-        case 'MEDIUM':
-            return 1.25;
-        case 'HIGH':
-            return 1.5;
+        case 'LOW': return 1.0; 
+        case 'MEDIUM': return 1.2;
+        case 'HIGH': return 1.5;
     }
 }
